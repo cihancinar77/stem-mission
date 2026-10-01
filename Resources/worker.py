@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""StemSplitter worker: YouTube link / audio file -> stems folder.
+"""StemMission worker: YouTube link / audio file -> stems folder.
 
 Emits line-based protocol on stdout for the Swift UI:
   PROGRESS <0..1> <message>
