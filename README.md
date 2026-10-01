@@ -17,7 +17,12 @@ A small macOS app that splits a song into stems. Paste a YouTube link or pick an
   Backing - No Vocals.wav   (peak -1 dBTP)
 ```
 
-All files are 44.1 kHz / 24-bit WAV.
+All files are 24-bit WAV. Pick the sample rate in the app:
+
+- **Auto**: matches the source (YouTube audio is usually 48 kHz)
+- **44.1 kHz** / **48 kHz**: forced, e.g. to match your DAW project
+
+Separation always runs at 44.1 kHz, because the models are trained at that rate. Stems are then resampled with soxr (VHQ) to the chosen rate. `00 Original` is decoded straight from the source at the chosen rate, so it is never resampled twice.
 
 ## Modes
 

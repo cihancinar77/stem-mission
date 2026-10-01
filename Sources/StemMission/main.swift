@@ -26,7 +26,7 @@ final class StemJob: ObservableObject {
 
     var workerURL: URL? { Bundle.main.url(forResource: "worker", withExtension: "py") }
 
-    func start(input: String, outputDir: String, mode: Mode) {
+    func start(input: String, outputDir: String, mode: Mode, sampleRate: String) {
         guard let worker = workerURL else { error = "worker.py not found"; return }
         guard FileManager.default.isExecutableFile(atPath: Self.venvPython.path) else {
             error = "Python environment not found: \(Self.venvPython.path)"; return
@@ -36,7 +36,7 @@ final class StemJob: ObservableObject {
 
         let p = Process()
         p.executableURL = Self.venvPython
-        p.arguments = ["-u", worker.path, "--input", input, "--outdir", outputDir, "--mode", mode.rawValue]
+        p.arguments = ["-u", worker.path, "--input", input, "--outdir", outputDir, "--mode", mode.rawValue, "--sample-rate", sampleRate]
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         p.environment = env
@@ -111,6 +111,7 @@ struct ContentView: View {
     @AppStorage("outputDir") private var outputDir = FileManager.default
         .homeDirectoryForCurrentUser.appendingPathComponent("Music/Stems").path
     @AppStorage("mode") private var modeRaw = StemJob.Mode.best.rawValue
+    @AppStorage("sampleRate") private var sampleRate = "auto"
     @State private var dropTargeted = false
 
     private var mode: StemJob.Mode { StemJob.Mode(rawValue: modeRaw) ?? .best }
@@ -151,9 +152,18 @@ struct ContentView: View {
             .pickerStyle(.segmented)
             .disabled(job.running)
 
+            Picker("Sample rate", selection: $sampleRate) {
+                Text("Auto").tag("auto")
+                Text("44.1 kHz").tag("44100")
+                Text("48 kHz").tag("48000")
+            }
+            .pickerStyle(.segmented)
+            .disabled(job.running)
+            .help("Separation always runs at 44.1 kHz; stems are then written at this rate. Match your Logic project.")
+
             HStack {
                 Button {
-                    job.start(input: input, outputDir: outputDir, mode: mode)
+                    job.start(input: input, outputDir: outputDir, mode: mode, sampleRate: sampleRate)
                 } label: {
                     Label("Generate Stems", systemImage: "sparkles").frame(maxWidth: .infinity)
                 }

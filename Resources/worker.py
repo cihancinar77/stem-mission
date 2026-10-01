@@ -14,6 +14,8 @@ MODELS = VENV / "models"
 BIN = VENV / "bin"
 YTDLP = shutil.which("yt-dlp", path="/opt/homebrew/bin:/usr/local/bin") or "yt-dlp"
 FFMPEG = shutil.which("ffmpeg", path="/opt/homebrew/bin:/usr/local/bin") or "ffmpeg"
+FFPROBE = shutil.which("ffprobe", path="/opt/homebrew/bin:/usr/local/bin") or "ffprobe"
+MODEL_SR = 44100  # both RoFormer and Demucs models run at 44.1 kHz
 
 child = None
 
@@ -101,6 +103,7 @@ def main():
     ap.add_argument("--input", required=True)
     ap.add_argument("--outdir", required=True)
     ap.add_argument("--mode", choices=["best", "fast"], default="best")
+    ap.add_argument("--sample-rate", default="auto", help="auto (match source), 44100 or 48000")
     a = ap.parse_args()
 
     src = a.input.strip().strip("'\"")
@@ -131,8 +134,13 @@ def main():
     else:
         raw = Path(src).expanduser()
 
+    probe = subprocess.run([FFPROBE, "-v", "error", "-select_streams", "a:0", "-show_entries",
+                            "stream=sample_rate", "-of", "csv=p=0", str(raw)], capture_output=True, text=True)
+    src_sr = int(probe.stdout.strip() or MODEL_SR)
+    out_sr = src_sr if a.sample_rate == "auto" else int(a.sample_rate)
+
     src_f32 = work / "src.wav"
-    run([FFMPEG, "-y", "-v", "error", "-i", str(raw), "-ar", "44100", "-ac", "2",
+    run([FFMPEG, "-y", "-v", "error", "-i", str(raw), "-ar", str(MODEL_SR), "-ac", "2",
          "-c:a", "pcm_f32le", str(src_f32)], 0.08, 0.10, "Preparing audio", lambda l: None)
 
     if a.mode == "best":
@@ -156,8 +164,8 @@ def main():
         files = {n.capitalize(): [str(d / f"{n}.wav")]
                  for n in ("vocals", "drums", "bass", "guitar", "piano", "other")}
 
-    progress(0.94, "Writing files")
-    import numpy as np, soundfile as sf
+    progress(0.94, f"Writing files ({out_sr / 1000:g} kHz)")
+    import numpy as np, soundfile as sf, soxr
 
     stems = {}
     for name, paths in files.items():
@@ -173,16 +181,22 @@ def main():
     n = min(len(x) for x in stems.values())
     stems = {k: v[:n] for k, v in stems.items()}
 
-    def write(name, x, peak_dbtp=None):
+    def write(name, x, peak_dbtp=None, sr=MODEL_SR):
+        if sr != out_sr:
+            x = soxr.resample(x, sr, out_sr, quality="VHQ")
         if peak_dbtp is not None:
             x = x * (10 ** (peak_dbtp / 20) / (np.max(np.abs(x)) + 1e-9))
-        sf.write(str(out / f"{name}.wav"), np.clip(x, -1, 1), 44100, subtype="PCM_24")
+        sf.write(str(out / f"{name}.wav"), np.clip(x, -1, 1), out_sr, subtype="PCM_24")
 
     for i, (name, x) in enumerate(stems.items(), 1):
         write(f"{i:02d} {name}", x)
     write("Backing - No Guitar", sum(v for k, v in stems.items() if k != "Guitar"), -1.0)
     write("Backing - No Vocals", sum(v for k, v in stems.items() if k != "Vocals"), -1.0)
-    write("00 Original", sf.read(str(src_f32), dtype="float32", always_2d=True)[0])
+    # original straight from the source at the output rate (no double resampling)
+    orig = work / "orig.wav"
+    subprocess.run([FFMPEG, "-y", "-v", "error", "-i", str(raw), "-ar", str(out_sr), "-ac", "2",
+                    "-c:a", "pcm_f32le", str(orig)], check=True)
+    write("00 Original", sf.read(str(orig), dtype="float32", always_2d=True)[0], sr=out_sr)
 
     shutil.rmtree(work, ignore_errors=True)
     progress(1.0, "Done")
