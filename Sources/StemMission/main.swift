@@ -120,7 +120,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
                 Image(systemName: "waveform.path").font(.title).foregroundStyle(.tint)
-                Text("Stem Splitter").font(.title2.bold())
+                Text("StemMission").font(.title2.bold())
             }
 
             GroupBox("Source") {
@@ -238,10 +238,10 @@ struct ContentView: View {
     }
 }
 
-struct StemSplitterApp: App {
+struct StemMissionApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     var body: some Scene {
-        WindowGroup("Stem Splitter") { ContentView() }
+        WindowGroup("StemMission") { ContentView() }
             .windowResizability(.contentSize)
     }
 }
@@ -250,4 +250,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 
-StemSplitterApp.main()
+StemMissionApp.main()

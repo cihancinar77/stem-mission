@@ -1,4 +1,4 @@
-# Stem Splitter
+# StemMission
 
 A small macOS app that splits a song into stems. Paste a YouTube link or pick an audio file, choose an output folder, hit **Generate Stems**, and watch the progress bar. When it's done, a `<title> - Stems/` folder opens in Finder.
 
@@ -40,12 +40,12 @@ Models are cached in `~/Music/_sepvenv/models` and download automatically on the
 ## Build
 
 ```sh
-zsh build.sh   # builds and installs ~/Applications/StemSplitter.app
+zsh build.sh   # builds and installs ~/Applications/StemMission.app
 ```
 
 ## How it works
 
-The SwiftUI app (`Sources/StemSplitter/main.swift`) runs `Resources/worker.py` with the venv's Python. The worker talks to the app over a line protocol on stdout:
+The SwiftUI app (`Sources/StemMission/main.swift`) runs `Resources/worker.py` with the venv's Python. The worker talks to the app over a line protocol on stdout:
 
 ```
 PROGRESS <0..1> <message>

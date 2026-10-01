@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "StemSplitter",
+    name: "StemMission",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "StemSplitter", path: "Sources/StemSplitter")
+        .executableTarget(name: "StemMission", path: "Sources/StemMission")
     ]
 )
