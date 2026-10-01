@@ -8,6 +8,8 @@ setopt pipefail
 HOME_DIR="${STEMMISSION_HOME:-$HOME/Library/Application Support/StemMission}"
 ENV="$HOME_DIR/env"
 UV="$HOME_DIR/bin/uv"
+# Prebuilt wheels for deps that ship only as source (diffq) -- no compiler on most Macs
+WHEELS="${0:A:h}/wheels"
 export UV_CACHE_DIR="$HOME_DIR/cache/uv"
 export UV_PYTHON_INSTALL_DIR="$HOME_DIR/python"
 
@@ -39,7 +41,7 @@ rm -rf "$ENV"
 
 STEP="installing packages"
 p 0.15 "Installing audio libraries (~2 GB, a few minutes)…"
-"$UV" pip install --python "$ENV/bin/python" \
+"$UV" pip install --python "$ENV/bin/python" --no-build --find-links "$WHEELS" \
   torch==2.14.0 demucs==4.1.0 audio-separator==0.47.0 onnxruntime==1.30.0 \
   soundfile==0.14.0 numpy==2.4.6 soxr==1.1.0 imageio-ffmpeg yt-dlp >&2
 
