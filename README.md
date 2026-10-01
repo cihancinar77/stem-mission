@@ -29,20 +29,20 @@ Separation always runs at 44.1 kHz, because the models are trained at that rate.
 - **Best quality (RoFormer)**: a two-stage chain using [audio-separator](https://github.com/nomadkaraoke/python-audio-separator). Kim Mel-Band RoFormer splits vocals from the instrumental, then BS-RoFormer-SW splits the instrumental into drums, bass, guitar, piano and other. A 10-minute song takes about 15 minutes on an M3.
 - **Fast (Demucs)**: `htdemucs_6s` on MPS. It takes about a minute per song, but the guitar and piano stems are weaker.
 
-## Requirements
+## Install
 
-- macOS 14+, Apple Silicon
-- `yt-dlp` and `ffmpeg` (Homebrew): `brew install yt-dlp ffmpeg`
-- A Python venv at `~/Music/_sepvenv`:
+You need an Apple Silicon Mac (M1 or newer) running macOS 14 or later. Nothing else needs to be installed first.
 
-```sh
-python3.11 -m venv ~/Music/_sepvenv
-~/Music/_sepvenv/bin/pip install torch demucs "audio-separator[cpu]" soundfile numpy
-```
+1. Download `StemMission.zip` from [Releases](../../releases/latest), unzip it, and move **StemMission.app** to Applications.
+2. The app is not notarized, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+3. Click **Install**. This one-time setup downloads Python, the separation libraries and ffmpeg (about 2.3 GB) into `~/Library/Application Support/StemMission`. Nothing outside that folder is touched.
+4. The first Best-quality run also downloads the AI models (about 1.6 GB).
 
-Models are cached in `~/Music/_sepvenv/models` and download automatically on the first run.
+To uninstall, delete the app and `~/Library/Application Support/StemMission`.
 
-## Build
+yt-dlp updates itself automatically if a YouTube download fails.
+
+## Build from source
 
 ```sh
 zsh build.sh   # builds and installs ~/Applications/StemMission.app
@@ -50,7 +50,7 @@ zsh build.sh   # builds and installs ~/Applications/StemMission.app
 
 ## How it works
 
-The SwiftUI app (`Sources/StemMission/main.swift`) runs `Resources/worker.py` with the venv's Python. The worker talks to the app over a line protocol on stdout:
+The SwiftUI app (`Sources/StemMission/main.swift`) runs `Resources/setup.sh` once. That script uses [uv](https://github.com/astral-sh/uv) to install a standalone Python 3.11, the pinned separation stack, yt-dlp and an ffmpeg binary (from imageio-ffmpeg). After that, the app runs `Resources/worker.py` with that Python. The worker talks to the app over a line protocol on stdout:
 
 ```
 PROGRESS <0..1> <message>

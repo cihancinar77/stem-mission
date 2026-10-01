@@ -7,7 +7,7 @@ APP=~/Applications/StemMission.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/StemMission "$APP/Contents/MacOS/"
-cp Resources/worker.py "$APP/Contents/Resources/"
+cp Resources/worker.py Resources/setup.sh "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

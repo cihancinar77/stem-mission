@@ -17,28 +17,43 @@ final class StemJob: ObservableObject {
     @Published var resultFolder: URL?
     @Published var error: String?
     @Published var startDate: Date?
+    @Published var isSetUp = FileManager.default.fileExists(atPath: StemJob.readyMarker.path)
 
     private var process: Process?
     private var buffer = ""
+    private var isSetupRun = false
 
-    static let venvPython = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Music/_sepvenv/bin/python")
+    // setup.sh installs Python, the separation stack and ffmpeg here
+    static let homeDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("StemMission")
+    static let python = homeDir.appendingPathComponent("env/bin/python")
+    static let readyMarker = homeDir.appendingPathComponent("env/.stemmission-ready")
 
-    var workerURL: URL? { Bundle.main.url(forResource: "worker", withExtension: "py") }
+    func runSetup() {
+        guard let script = Bundle.main.url(forResource: "setup", withExtension: "sh") else {
+            error = "setup.sh not found"; return
+        }
+        launch(URL(fileURLWithPath: "/bin/zsh"), [script.path], setup: true)
+    }
 
     func start(input: String, outputDir: String, mode: Mode, sampleRate: String) {
-        guard let worker = workerURL else { error = "worker.py not found"; return }
-        guard FileManager.default.isExecutableFile(atPath: Self.venvPython.path) else {
-            error = "Python environment not found: \(Self.venvPython.path)"; return
+        guard let worker = Bundle.main.url(forResource: "worker", withExtension: "py") else {
+            error = "worker.py not found"; return
         }
+        launch(Self.python, ["-u", worker.path, "--input", input, "--outdir", outputDir,
+                             "--mode", mode.rawValue, "--sample-rate", sampleRate], setup: false)
+    }
+
+    private func launch(_ executable: URL, _ arguments: [String], setup: Bool) {
         progress = 0; status = "Starting…"; error = nil; resultFolder = nil
-        running = true; startDate = Date(); buffer = ""
+        running = true; startDate = Date(); buffer = ""; isSetupRun = setup
 
         let p = Process()
-        p.executableURL = Self.venvPython
-        p.arguments = ["-u", worker.path, "--input", input, "--outdir", outputDir, "--mode", mode.rawValue, "--sample-rate", sampleRate]
+        p.executableURL = executable
+        p.arguments = arguments
         var env = ProcessInfo.processInfo.environment
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+        env["PATH"] = "/usr/bin:/bin"
+        env["STEMMISSION_HOME"] = Self.homeDir.path
         p.environment = env
         let pipe = Pipe()
         p.standardOutput = pipe
@@ -89,6 +104,9 @@ final class StemJob: ObservableObject {
         case "PROGRESS" where parts.count >= 2:
             progress = Double(parts[1]) ?? progress
             if parts.count == 3 { status = parts[2] }
+        case "DONE" where isSetupRun:
+            progress = 1; status = "Setup complete"
+            isSetUp = FileManager.default.fileExists(atPath: Self.readyMarker.path)
         case "DONE":
             let path = String(line.dropFirst(5))
             resultFolder = URL(fileURLWithPath: path)
@@ -115,13 +133,33 @@ struct ContentView: View {
     @State private var dropTargeted = false
 
     private var mode: StemJob.Mode { StemJob.Mode(rawValue: modeRaw) ?? .best }
-    private var canStart: Bool { !job.running && !input.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var canStart: Bool { job.isSetUp && !job.running && !input.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
                 Image(systemName: "waveform.path").font(.title).foregroundStyle(.tint)
                 Text("StemMission").font(.title2.bold())
+            }
+
+            if !job.isSetUp {
+                GroupBox("One-time setup") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("StemMission needs its audio engine before the first run. It downloads Python, the separation libraries and ffmpeg (about 2.3 GB) into Application Support. Nothing else on your Mac is touched.")
+                            .font(.callout).fixedSize(horizontal: false, vertical: true)
+                        Text("The first Best-quality run also downloads the AI models (about 1.6 GB).")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button {
+                            job.runSetup()
+                        } label: {
+                            Label("Install", systemImage: "arrow.down.circle").frame(maxWidth: .infinity)
+                        }
+                        .controlSize(.large)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(job.running)
+                    }
+                    .padding(6)
+                }
             }
 
             GroupBox("Source") {
@@ -159,7 +197,7 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .disabled(job.running)
-            .help("Separation always runs at 44.1 kHz; stems are then written at this rate. Match your Logic project.")
+            .help("Separation always runs at 44.1 kHz; stems are then written at this rate. Match your DAW project.")
 
             HStack {
                 Button {

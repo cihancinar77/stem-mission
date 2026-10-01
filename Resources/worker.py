@@ -9,12 +9,14 @@ Emits line-based protocol on stdout for the Swift UI:
 import argparse, glob, os, re, shutil, signal, subprocess, sys
 from pathlib import Path
 
-VENV = Path.home() / "Music/_sepvenv"
-MODELS = VENV / "models"
-BIN = VENV / "bin"
-YTDLP = shutil.which("yt-dlp", path="/opt/homebrew/bin:/usr/local/bin") or "yt-dlp"
-FFMPEG = shutil.which("ffmpeg", path="/opt/homebrew/bin:/usr/local/bin") or "ffmpeg"
-FFPROBE = shutil.which("ffprobe", path="/opt/homebrew/bin:/usr/local/bin") or "ffprobe"
+# everything lives in the folder setup.sh created
+HOME_DIR = Path(os.environ.get("STEMMISSION_HOME",
+                               Path.home() / "Library/Application Support/StemMission"))
+MODELS = HOME_DIR / "models"
+BIN = HOME_DIR / "env" / "bin"
+UV = HOME_DIR / "bin" / "uv"
+YTDLP = str(BIN / "yt-dlp")
+FFMPEG = str(BIN / "ffmpeg")
 MODEL_SR = 44100  # both RoFormer and Demucs models run at 44.1 kHz
 
 child = None
@@ -40,7 +42,7 @@ signal.signal(signal.SIGTERM, on_term)
 def run(cmd, lo, hi, msg, parse):
     """Run a subprocess, mapping its progress output into [lo, hi]."""
     global child
-    env = dict(os.environ, PATH=f"{BIN}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+    env = dict(os.environ, PATH=f"{BIN}:/usr/bin:/bin",
                AUDIO_SEPARATOR_MODEL_DIR=str(MODELS), PYTHONUNBUFFERED="1")
     child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
     tail, buf = [], b""
@@ -84,6 +86,27 @@ def ytdlp_parse(line):
     return None
 
 
+def sample_rate_of(path):
+    # ffmpeg -i prints stream info to stderr ("44100 Hz"); avoids needing ffprobe
+    info = subprocess.run([FFMPEG, "-hide_banner", "-i", str(path)], capture_output=True, text=True).stderr
+    m = re.search(r"Audio:.*?(\d{4,6}) Hz", info)
+    return int(m.group(1)) if m else MODEL_SR
+
+
+def video_title(url):
+    cmd = [YTDLP, "--no-playlist", "--print", "title", url]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        # YouTube changes often; a fresh yt-dlp usually fixes it
+        progress(0.0, "Updating yt-dlp…")
+        subprocess.run([str(UV), "pip", "install", "--python", str(BIN / "python"), "-U", "yt-dlp"],
+                       capture_output=True)
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("Could not read link:\n" + r.stderr[-800:])
+    return r.stdout.strip().splitlines()[0]
+
+
 def safe_name(s):
     s = re.sub(r'[\\/:*?"<>|]+', " ", s).strip()
     return re.sub(r"\s+", " ", s)[:120] or "Stems"
@@ -112,11 +135,7 @@ def main():
     is_url = re.match(r"https?://", src) is not None
 
     if is_url:
-        title_p = subprocess.run([YTDLP, "--no-playlist", "--print", "title", src],
-                                 capture_output=True, text=True)
-        if title_p.returncode != 0:
-            raise RuntimeError("Could not read link:\n" + title_p.stderr[-800:])
-        title = title_p.stdout.strip().splitlines()[0]
+        title = video_title(src)
     else:
         p = Path(src).expanduser()
         if not p.is_file():
@@ -128,15 +147,13 @@ def main():
     work.mkdir(parents=True)
 
     if is_url:
-        run([YTDLP, "--no-playlist", "--newline", "-f", "bestaudio", "-x", "--audio-format", "wav",
+        run([YTDLP, "--no-playlist", "--newline", "-f", "bestaudio", "--ffmpeg-location", FFMPEG,
              "-o", str(work / "download.%(ext)s"), src], 0.0, 0.08, "Downloading", ytdlp_parse)
-        raw = work / "download.wav"
+        raw = Path(glob.glob(str(work / "download.*"))[0])
     else:
         raw = Path(src).expanduser()
 
-    probe = subprocess.run([FFPROBE, "-v", "error", "-select_streams", "a:0", "-show_entries",
-                            "stream=sample_rate", "-of", "csv=p=0", str(raw)], capture_output=True, text=True)
-    src_sr = int(probe.stdout.strip() or MODEL_SR)
+    src_sr = sample_rate_of(raw)
     out_sr = src_sr if a.sample_rate == "auto" else int(a.sample_rate)
 
     src_f32 = work / "src.wav"
@@ -145,7 +162,7 @@ def main():
 
     if a.mode == "best":
         sep = str(BIN / "audio-separator")
-        common = ["--model_file_dir", str(MODELS), "--output_format", "WAV"]
+        common = ["--model_file_dir", str(MODELS), "--output_format", "WAV", "--use_soundfile"]
         run([sep, str(src_f32), "-m", "vocals_mel_band_roformer.ckpt",
              "--output_dir", str(work / "step1"), *common],
             0.10, 0.33, "1/2 Separating vocals", tqdm_parse("1/2 Separating vocals"))
