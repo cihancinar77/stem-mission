@@ -24,6 +24,10 @@ All files are 24-bit WAV. Pick the sample rate in the app:
 
 Separation always runs at 44.1 kHz, because the models are trained at that rate. Stems are then resampled with soxr (VHQ) to the chosen rate. `00 Original` is decoded straight from the source at the chosen rate, so it is never resampled twice.
 
+## Download only
+
+With a YouTube link in the source field, **Download Only** skips separation and saves the audio as `<title>.wav` (24-bit, at the chosen sample rate) in the output folder.
+
 ## Modes
 
 - **Best quality (RoFormer)**: a two-stage chain using [audio-separator](https://github.com/nomadkaraoke/python-audio-separator). Kim Mel-Band RoFormer splits vocals from the instrumental, then BS-RoFormer-SW splits the instrumental into drums, bass, guitar, piano and other. A 10-minute song takes about 15 minutes on an M3.

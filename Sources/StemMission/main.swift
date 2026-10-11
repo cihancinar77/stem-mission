@@ -36,12 +36,13 @@ final class StemJob: ObservableObject {
         launch(URL(fileURLWithPath: "/bin/zsh"), [script.path], setup: true)
     }
 
-    func start(input: String, outputDir: String, mode: Mode, sampleRate: String) {
+    func start(input: String, outputDir: String, mode: Mode, sampleRate: String, downloadOnly: Bool = false) {
         guard let worker = Bundle.main.url(forResource: "worker", withExtension: "py") else {
             error = "worker.py not found"; return
         }
         launch(Self.python, ["-u", worker.path, "--input", input, "--outdir", outputDir,
-                             "--mode", mode.rawValue, "--sample-rate", sampleRate], setup: false)
+                             "--mode", mode.rawValue, "--sample-rate", sampleRate]
+                            + (downloadOnly ? ["--download-only"] : []), setup: false)
     }
 
     private func launch(_ executable: URL, _ arguments: [String], setup: Bool) {
@@ -134,6 +135,7 @@ struct ContentView: View {
 
     private var mode: StemJob.Mode { StemJob.Mode(rawValue: modeRaw) ?? .best }
     private var canStart: Bool { job.isSetUp && !job.running && !input.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var isLink: Bool { input.trimmingCharacters(in: .whitespaces).range(of: "^https?://", options: .regularExpression) != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -197,7 +199,7 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .disabled(job.running)
-            .help("Separation always runs at 44.1 kHz; stems are then written at this rate. Match your DAW project.")
+            .help("Separation always runs at 44.1 kHz; stems and downloads are then written at this rate. Match your DAW project.")
 
             HStack {
                 Button {
@@ -209,6 +211,15 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(!canStart)
                 .keyboardShortcut(.defaultAction)
+
+                Button {
+                    job.start(input: input, outputDir: outputDir, mode: mode, sampleRate: sampleRate, downloadOnly: true)
+                } label: {
+                    Label("Download Only", systemImage: "arrow.down.circle")
+                }
+                .controlSize(.large)
+                .disabled(!canStart || !isLink)
+                .help("Save the link's audio as a WAV in the output folder, without making stems.")
 
                 if job.running {
                     Button("Cancel", role: .cancel) { job.cancel() }.controlSize(.large)

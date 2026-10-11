@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """StemMission worker: YouTube link / audio file -> stems folder.
 
+With --download-only a link is just saved as "<title>.wav", no separation.
+
 Emits line-based protocol on stdout for the Swift UI:
   PROGRESS <0..1> <message>
   DONE <output folder>
   ERROR <message>
 """
-import argparse, glob, os, re, shutil, signal, subprocess, sys
+import argparse, glob, os, re, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
 # everything lives in the folder setup.sh created
@@ -112,13 +114,35 @@ def safe_name(s):
     return re.sub(r"\s+", " ", s)[:120] or "Stems"
 
 
-def unique_dir(p):
-    if not p.exists():
-        return p
+def unique_path(folder, name, suffix=""):
+    p = folder / f"{name}{suffix}"
     i = 2
-    while Path(f"{p} ({i})").exists():
+    while p.exists():
+        p = folder / f"{name} ({i}){suffix}"
         i += 1
-    return Path(f"{p} ({i})")
+    return p
+
+
+def download(url, work, lo, hi):
+    run([YTDLP, "--no-playlist", "--newline", "-f", "bestaudio", "--ffmpeg-location", FFMPEG,
+         "-o", str(work / "download.%(ext)s"), url], lo, hi, "Downloading", ytdlp_parse)
+    return Path(glob.glob(str(work / "download.*"))[0])
+
+
+def download_only(url, outroot, sample_rate):
+    title = video_title(url)
+    work = Path(tempfile.mkdtemp(prefix=".download-", dir=outroot))
+    try:
+        raw = download(url, work, 0.0, 0.90)
+        out_sr = sample_rate_of(raw) if sample_rate == "auto" else int(sample_rate)
+        out = unique_path(outroot, safe_name(title), ".wav")
+        run([FFMPEG, "-y", "-v", "error", "-i", str(raw), "-ar", str(out_sr), "-ac", "2",
+             "-c:a", "pcm_s24le", str(out)], 0.90, 1.0, f"Writing file ({out_sr / 1000:g} kHz)",
+            lambda l: None)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    progress(1.0, "Done")
+    emit("DONE", str(out))
 
 
 def main():
@@ -127,12 +151,18 @@ def main():
     ap.add_argument("--outdir", required=True)
     ap.add_argument("--mode", choices=["best", "fast"], default="best")
     ap.add_argument("--sample-rate", default="auto", help="auto (match source), 44100 or 48000")
+    ap.add_argument("--download-only", action="store_true", help="save the link's audio, skip separation")
     a = ap.parse_args()
 
     src = a.input.strip().strip("'\"")
     outroot = Path(a.outdir).expanduser()
     outroot.mkdir(parents=True, exist_ok=True)
     is_url = re.match(r"https?://", src) is not None
+
+    if a.download_only:
+        if not is_url:
+            raise RuntimeError("Download needs a link, not a file")
+        return download_only(src, outroot, a.sample_rate)
 
     if is_url:
         title = video_title(src)
@@ -142,14 +172,12 @@ def main():
             raise RuntimeError(f"File not found: {p}")
         title = p.stem
 
-    out = unique_dir(outroot / f"{safe_name(title)} - Stems")
+    out = unique_path(outroot, f"{safe_name(title)} - Stems")
     work = out / "_work"
     work.mkdir(parents=True)
 
     if is_url:
-        run([YTDLP, "--no-playlist", "--newline", "-f", "bestaudio", "--ffmpeg-location", FFMPEG,
-             "-o", str(work / "download.%(ext)s"), src], 0.0, 0.08, "Downloading", ytdlp_parse)
-        raw = Path(glob.glob(str(work / "download.*"))[0])
+        raw = download(src, work, 0.0, 0.08)
     else:
         raw = Path(src).expanduser()
 
