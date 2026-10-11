@@ -40,7 +40,7 @@ rm -rf "$ENV"
 "$UV" venv --python 3.11 "$ENV" >&2
 
 STEP="installing packages"
-p 0.15 "Installing audio libraries (~2 GB, a few minutes)…"
+p 0.15 "Installing audio libraries (~1.2 GB, a few minutes)…"
 "$UV" pip install --python "$ENV/bin/python" --no-build --find-links "$WHEELS" \
   torch==2.14.0 demucs==4.1.0 audio-separator==0.47.0 onnxruntime==1.30.0 \
   soundfile==0.14.0 numpy==2.4.6 soxr==1.1.0 imageio-ffmpeg yt-dlp >&2

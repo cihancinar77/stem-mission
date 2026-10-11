@@ -39,8 +39,10 @@ You need an Apple Silicon Mac (M1 or newer) running macOS 14 or later. Nothing e
 
 1. Download `StemMission.zip` from [Releases](../../releases/latest), unzip it, and move **StemMission.app** to Applications.
 2. The app is not notarized, so macOS blocks it the first time. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
-3. Click **Install**. This one-time setup downloads Python, the separation libraries and ffmpeg (about 2.3 GB) into `~/Library/Application Support/StemMission`. Nothing outside that folder is touched.
-4. The first Best-quality run also downloads the AI models (about 1.6 GB).
+3. Click **Install**. This one-time setup downloads Python, the separation libraries and ffmpeg (about 1.2 GB installed) into `~/Library/Application Support/StemMission`. Nothing outside that folder is touched.
+4. The first Best-quality run also downloads the AI models (about 1.5 GB).
+
+That is about 2.7 GB in total. Each song then needs room for its stems: nine 24-bit WAV files, roughly 150 MB per minute of music. Keep at least 5 GB free.
 
 To uninstall, delete the app and `~/Library/Application Support/StemMission`.
 

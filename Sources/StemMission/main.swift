@@ -215,9 +215,9 @@ struct ContentView: View {
             if !job.isSetUp {
                 GroupBox("One-time setup") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("StemMission needs its audio engine before the first run. It downloads Python, the separation libraries and ffmpeg (about 2.3 GB) into Application Support. Nothing else on your Mac is touched.")
+                        Text("StemMission needs its audio engine before the first run. It downloads Python, the separation libraries and ffmpeg (about 1.2 GB installed) into Application Support. Nothing else on your Mac is touched.")
                             .font(.callout).fixedSize(horizontal: false, vertical: true)
-                        Text("The first Best-quality run also downloads the AI models (about 1.6 GB).")
+                        Text("The first Best-quality run also downloads the AI models (about 1.5 GB).")
                             .font(.caption).foregroundStyle(.secondary)
                         Button {
                             job.runSetup()
