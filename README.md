@@ -52,6 +52,8 @@ yt-dlp updates itself automatically if a YouTube download fails.
 zsh build.sh   # builds and installs ~/Applications/StemMission.app
 ```
 
+The icon is `Resources/AppIcon.icns`. `tools/make_icon.py <out.png>` renders its 1024 px master (needs numpy, scipy and Pillow); turn that into an `.icns` with `sips` and `iconutil`.
+
 ## How it works
 
 The SwiftUI app (`Sources/StemMission/main.swift`) runs `Resources/setup.sh` once. That script uses [uv](https://github.com/astral-sh/uv) to install a standalone Python 3.11, the pinned separation stack, yt-dlp and an ffmpeg binary (from imageio-ffmpeg). After that, the app runs `Resources/worker.py` with that Python. The worker talks to the app over a line protocol on stdout:
