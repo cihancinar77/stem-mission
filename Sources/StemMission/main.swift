@@ -122,6 +122,72 @@ final class StemJob: ObservableObject {
     }
 }
 
+// MARK: - Theme
+
+// Same purple-nebula palette as the app icon (tools/make_icon.py)
+enum Theme {
+    static let accent = Color(red: 0.60, green: 0.31, blue: 0.94)
+    static let orchid = Color(red: 0.74, green: 0.45, blue: 1.00)
+    static let pink = Color(red: 0.93, green: 0.51, blue: 0.94)
+    static let blue = Color(red: 0.25, green: 0.42, blue: 0.95)
+    static let space = Color(red: 0.024, green: 0.012, blue: 0.078)
+    static let violet = Color(red: 0.13, green: 0.05, blue: 0.31)
+    static let error = Color(red: 1.0, green: 0.55, blue: 0.62)
+}
+
+struct SeededGenerator: RandomNumberGenerator {
+    var state: UInt64
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+}
+
+struct NebulaBackground: View {
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Theme.space, Theme.violet, Theme.space],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            RadialGradient(colors: [Theme.accent.opacity(0.55), .clear],
+                           center: UnitPoint(x: 0.22, y: 0.18), startRadius: 0, endRadius: 380)
+            RadialGradient(colors: [Theme.pink.opacity(0.26), .clear],
+                           center: UnitPoint(x: 0.92, y: 0.72), startRadius: 0, endRadius: 320)
+            RadialGradient(colors: [Theme.blue.opacity(0.24), .clear],
+                           center: UnitPoint(x: 0.82, y: 0.06), startRadius: 0, endRadius: 260)
+            Canvas { ctx, size in
+                var rng = SeededGenerator(state: 7)  // fixed seed: stars must not jump on redraw
+                for _ in 0..<140 {
+                    let x = Double.random(in: 0...1, using: &rng) * size.width
+                    let y = Double.random(in: 0...1, using: &rng) * size.height
+                    let b = pow(Double.random(in: 0...1, using: &rng), 3)
+                    let r = 0.4 + b * 1.1
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)),
+                             with: .color(.white.opacity(0.18 + b * 0.6)))
+                }
+            }
+        }
+    }
+}
+
+struct NebulaCard: GroupBoxStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            configuration.label
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.pink)
+                .padding(.horizontal, 6)
+            configuration.content
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.orchid.opacity(0.35), lineWidth: 1))
+    }
+}
+
 // MARK: - UI
 
 struct ContentView: View {
@@ -140,8 +206,10 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
-                Image(systemName: "waveform.path").font(.title).foregroundStyle(.tint)
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 40, height: 40)
                 Text("StemMission").font(.title2.bold())
+                    .foregroundStyle(LinearGradient(colors: [.white, Theme.pink],
+                                                    startPoint: .leading, endPoint: .trailing))
             }
 
             if !job.isSetUp {
@@ -244,7 +312,7 @@ struct ContentView: View {
 
             if let err = job.error {
                 ScrollView {
-                    Text(err).font(.caption.monospaced()).foregroundStyle(.red).textSelection(.enabled)
+                    Text(err).font(.caption.monospaced()).foregroundStyle(Theme.error).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 90)
@@ -261,6 +329,10 @@ struct ContentView: View {
         }
         .padding(22)
         .frame(width: 560)
+        .groupBoxStyle(NebulaCard())
+        .tint(Theme.accent)
+        .background(NebulaBackground().ignoresSafeArea())
+        .preferredColorScheme(.dark)
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
@@ -302,6 +374,7 @@ struct StemMissionApp: App {
     var body: some Scene {
         WindowGroup("StemMission") { ContentView() }
             .windowResizability(.contentSize)
+            .windowStyle(.hiddenTitleBar)
     }
 }
 
