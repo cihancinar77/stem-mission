@@ -8,7 +8,7 @@ Emits line-based protocol on stdout for the Swift UI:
   DONE <output folder>
   ERROR <message>
 """
-import argparse, glob, os, re, shutil, signal, subprocess, sys, tempfile
+import argparse, os, re, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
 # everything lives in the folder setup.sh created
@@ -123,10 +123,18 @@ def unique_path(folder, name, suffix=""):
     return p
 
 
+def find(folder, pattern):
+    # only the pattern is a glob; the folder may contain [ ] (e.g. "[1080p]" in titles)
+    hits = sorted(Path(folder).glob(pattern))
+    if not hits:
+        raise RuntimeError(f"Expected output missing: {pattern} in {folder}")
+    return str(hits[0])
+
+
 def download(url, work, lo, hi):
     run([YTDLP, "--no-playlist", "--newline", "-f", "bestaudio", "--ffmpeg-location", FFMPEG,
          "-o", str(work / "download.%(ext)s"), url], lo, hi, "Downloading", ytdlp_parse)
-    return Path(glob.glob(str(work / "download.*"))[0])
+    return Path(find(work, "download.*"))
 
 
 def download_only(url, outroot, sample_rate):
@@ -194,11 +202,11 @@ def main():
         run([sep, str(src_f32), "-m", "vocals_mel_band_roformer.ckpt",
              "--output_dir", str(work / "step1"), *common],
             0.10, 0.33, "1/2 Separating vocals", tqdm_parse("1/2 Separating vocals"))
-        inst = glob.glob(str(work / "step1" / "*_(other)_*.wav"))[0]
-        voc1 = glob.glob(str(work / "step1" / "*_(vocals)_*.wav"))[0]
+        inst = find(work / "step1", "*_(other)_*.wav")
+        voc1 = find(work / "step1", "*_(vocals)_*.wav")
         run([sep, inst, "-m", "BS-Roformer-SW.ckpt", "--output_dir", str(work / "step2"), *common],
             0.33, 0.93, "2/2 Separating instruments", tqdm_parse("2/2 Separating instruments"))
-        g = lambda n: glob.glob(str(work / "step2" / f"*_({n})_*.wav"))[0]
+        g = lambda n: find(work / "step2", f"*_({n})_*.wav")
         files = {"Vocals": [voc1, g("vocals")], "Drums": [g("drums")], "Bass": [g("bass")],
                  "Guitar": [g("guitar")], "Piano": [g("piano")], "Other": [g("other")]}
     else:
