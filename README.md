@@ -51,7 +51,7 @@ yt-dlp updates itself automatically if a YouTube download fails.
 ## Build from source
 
 ```sh
-zsh build.sh   # builds and installs ~/Applications/StemMission.app
+zsh build.sh   # builds and installs /Applications/StemMission.app
 ```
 
 The icon is `Resources/AppIcon.icns`. `tools/make_icon.py <out.png>` renders its 1024 px master (needs numpy, scipy and Pillow); turn that into an `.icns` with `sips` and `iconutil`.

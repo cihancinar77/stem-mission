@@ -1,10 +1,15 @@
 #!/bin/zsh
-# Builds StemMission.app into ~/Applications
+# Builds StemMission.app into /Applications
 set -e
 cd "${0:A:h}"
 swift build -c release
-APP=~/Applications/StemMission.app
-rm -rf "$APP"
+APP=/Applications/StemMission.app
+if [[ -e "$APP" ]]; then
+  echo "Overwriting existing $APP"
+  rm -rf "$APP"
+else
+  echo "Creating $APP"
+fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/StemMission "$APP/Contents/MacOS/"
 cp Resources/worker.py Resources/setup.sh Resources/AppIcon.icns "$APP/Contents/Resources/"
