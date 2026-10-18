@@ -36,13 +36,16 @@ final class StemJob: ObservableObject {
         launch(URL(fileURLWithPath: "/bin/zsh"), [script.path], setup: true)
     }
 
-    func start(input: String, outputDir: String, mode: Mode, sampleRate: String, downloadOnly: Bool = false) {
+    func start(input: String, outputDir: String, mode: Mode, sampleRate: String, downloadOnly: Bool = false,
+               trim: (start: Double, end: Double)? = nil) {
         guard let worker = Bundle.main.url(forResource: "worker", withExtension: "py") else {
             error = "worker.py not found"; return
         }
-        launch(Self.python, ["-u", worker.path, "--input", input, "--outdir", outputDir,
-                             "--mode", mode.rawValue, "--sample-rate", sampleRate]
-                            + (downloadOnly ? ["--download-only"] : []), setup: false)
+        var args = ["-u", worker.path, "--input", input, "--outdir", outputDir,
+                    "--mode", mode.rawValue, "--sample-rate", sampleRate]
+        if downloadOnly { args.append("--download-only") }
+        if let trim { args += ["--start", String(format: "%.3f", trim.start), "--end", String(format: "%.3f", trim.end)] }
+        launch(Self.python, args, setup: false)
     }
 
     private func launch(_ executable: URL, _ arguments: [String], setup: Bool) {
@@ -192,6 +195,7 @@ struct NebulaCard: GroupBoxStyle {
 
 struct ContentView: View {
     @StateObject private var job = StemJob()
+    @StateObject private var clip = AudioClip()
     @State private var input = ""
     @AppStorage("outputDir") private var outputDir = FileManager.default
         .homeDirectoryForCurrentUser.appendingPathComponent("Music/Stems").path
@@ -241,9 +245,11 @@ struct ContentView: View {
                     }
                     Text("mp3, wav, m4a, flac… or any YouTube link")
                         .font(.caption).foregroundStyle(.secondary)
+                    TrimPanel(clip: clip).disabled(job.running)
                 }
                 .padding(6)
             }
+            .onChange(of: input) { clip.load(path: input) }
 
             GroupBox("Output folder") {
                 HStack {
@@ -271,7 +277,9 @@ struct ContentView: View {
 
             HStack {
                 Button {
-                    job.start(input: input, outputDir: outputDir, mode: mode, sampleRate: sampleRate)
+                    clip.stop()
+                    job.start(input: input, outputDir: outputDir, mode: mode, sampleRate: sampleRate,
+                              trim: clip.isTrimmed ? (clip.start, clip.end) : nil)
                 } label: {
                     Label("Generate Stems", systemImage: "sparkles").frame(maxWidth: .infinity)
                 }

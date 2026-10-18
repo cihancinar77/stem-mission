@@ -114,6 +114,11 @@ def safe_name(s):
     return re.sub(r"\s+", " ", s)[:120] or "Stems"
 
 
+def clock(s):
+    # "1m05s"; ":" is not allowed in file names
+    return f"{int(s) // 60}m{int(s) % 60:02d}s"
+
+
 def unique_path(folder, name, suffix=""):
     p = folder / f"{name}{suffix}"
     i = 2
@@ -160,6 +165,8 @@ def main():
     ap.add_argument("--mode", choices=["best", "fast"], default="best")
     ap.add_argument("--sample-rate", default="auto", help="auto (match source), 44100 or 48000")
     ap.add_argument("--download-only", action="store_true", help="save the link's audio, skip separation")
+    ap.add_argument("--start", type=float, help="separate only from this second")
+    ap.add_argument("--end", type=float, help="separate only up to this second")
     a = ap.parse_args()
 
     src = a.input.strip().strip("'\"")
@@ -180,7 +187,14 @@ def main():
             raise RuntimeError(f"File not found: {p}")
         title = p.stem
 
-    out = unique_path(outroot, f"{safe_name(title)} - Stems")
+    # output-side -ss/-t: ffmpeg decodes up to the start, so the cut is sample-accurate
+    start = a.start or 0.0
+    trim = (["-ss", f"{start:.3f}"] if start else []) + \
+           (["-t", f"{a.end - start:.3f}"] if a.end is not None else [])
+    # added after safe_name so a long title can't truncate it
+    span = f" ({clock(start)}-{clock(a.end) if a.end is not None else 'end'})" if trim else ""
+
+    out = unique_path(outroot, f"{safe_name(title)}{span} - Stems")
     work = out / "_work"
     work.mkdir(parents=True)
 
@@ -193,7 +207,7 @@ def main():
     out_sr = src_sr if a.sample_rate == "auto" else int(a.sample_rate)
 
     src_f32 = work / "src.wav"
-    run([FFMPEG, "-y", "-v", "error", "-i", str(raw), "-ar", str(MODEL_SR), "-ac", "2",
+    run([FFMPEG, "-y", "-v", "error", "-i", str(raw), *trim, "-ar", str(MODEL_SR), "-ac", "2",
          "-c:a", "pcm_f32le", str(src_f32)], 0.08, 0.10, "Preparing audio", lambda l: None)
 
     if a.mode == "best":
@@ -247,7 +261,7 @@ def main():
     write("Backing - No Vocals", sum(v for k, v in stems.items() if k != "Vocals"), -1.0)
     # original straight from the source at the output rate (no double resampling)
     orig = work / "orig.wav"
-    subprocess.run([FFMPEG, "-y", "-v", "error", "-i", str(raw), "-ar", str(out_sr), "-ac", "2",
+    subprocess.run([FFMPEG, "-y", "-v", "error", "-i", str(raw), *trim, "-ar", str(out_sr), "-ac", "2",
                     "-c:a", "pcm_f32le", str(orig)], check=True)
     write("00 Original", sf.read(str(orig), dtype="float32", always_2d=True)[0], sr=out_sr)
 
