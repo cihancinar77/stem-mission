@@ -310,6 +310,8 @@ struct OptionCard: View {
 struct ContentView: View {
     enum Source { case link, file }
 
+    var onFinished: () -> Void = {}
+
     @StateObject private var job = StemJob()
     @StateObject private var clip = AudioClip()
     @State private var source: Source?
@@ -318,8 +320,7 @@ struct ContentView: View {
     @State private var trimDone = false     // step 2 confirmed, step 3 opens
     @State private var savedAudio: URL?
     @State private var saveError: String?
-    @AppStorage("outputDir") private var outputDir = FileManager.default
-        .homeDirectoryForCurrentUser.appendingPathComponent("Music/Stems").path
+    @AppStorage("outputDir") private var outputDir = defaultOutputDir
     @AppStorage("mode") private var modeRaw = StemJob.Mode.best.rawValue
     @AppStorage("sampleRate") private var sampleRate = "auto"
     @State private var dropTargeted = false
@@ -402,9 +403,7 @@ struct ContentView: View {
         .padding(22)
         .frame(width: 560, height: Self.windowHeight)
         .groupBoxStyle(NebulaCard())
-        .tint(Theme.accent)
-        .background(NebulaBackground().ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .onChange(of: job.resultFolder) { if job.resultFolder != nil { onFinished() } }
         .onChange(of: link) { if source == .link { setAudio(nil) } }
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             guard job.isSetUp, !job.running, let provider = providers.first else { return false }
@@ -647,7 +646,7 @@ struct ContentView: View {
 struct StemMissionApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     var body: some Scene {
-        WindowGroup("StemMission") { ContentView() }
+        WindowGroup("StemMission") { RootView() }
             .windowResizability(.contentSize)
             .windowStyle(.hiddenTitleBar)
     }

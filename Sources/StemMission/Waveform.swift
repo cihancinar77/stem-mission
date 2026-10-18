@@ -71,8 +71,9 @@ final class AudioClip: ObservableObject {
         playhead = nil
     }
 
-    /// Max |sample| per bin over all channels, normalised to 0...1.
-    private static func readPeaks(_ url: URL, bins: Int) throws -> ([Float], Double) {
+    /// Max |sample| per bin over all channels; normalised to 0...1 unless `normalize` is false
+    /// (stems keep their real level, so a near-silent stem looks near-silent).
+    static func readPeaks(_ url: URL, bins: Int, normalize: Bool = true) throws -> ([Float], Double) {
         let file = try AVAudioFile(forReading: url)
         let total = file.length
         let format = file.processingFormat
@@ -95,7 +96,8 @@ final class AudioClip: ObservableObject {
             }
             pos += n
         }
-        if let top = peaks.max(), top > 0 { peaks = peaks.map { $0 / top } }
+        if normalize, let top = peaks.max(), top > 0 { peaks = peaks.map { $0 / top } }
+        if !normalize { peaks = peaks.map { min(1, $0) } }
         return (peaks, Double(total) / format.sampleRate)
     }
 }
