@@ -58,11 +58,12 @@ final class StemJob: ObservableObject {
     }
 
     func start(input: String, outputDir: String, mode: Mode, sampleRate: String,
-               trim: (start: Double, end: Double)? = nil) {
+               trim: (start: Double, end: Double)? = nil, click: Bool = false) {
         guard let worker else { return }
         var args = ["-u", worker.path, "--input", input, "--outdir", outputDir,
                     "--mode", mode.rawValue, "--sample-rate", sampleRate]
         if let trim { args += ["--start", String(format: "%.3f", trim.start), "--end", String(format: "%.3f", trim.end)] }
+        if click { args.append("--click") }
         launch(Self.python, args, kind: .stems)
     }
 
@@ -323,6 +324,7 @@ struct ContentView: View {
     @AppStorage("outputDir") private var outputDir = defaultOutputDir
     @AppStorage("mode") private var modeRaw = StemJob.Mode.best.rawValue
     @AppStorage("sampleRate") private var sampleRate = "auto"
+    @AppStorage("click") private var click = true
     @State private var dropTargeted = false
 
     // fits all three steps open on most screens, but never taller than the screen itself
@@ -377,7 +379,7 @@ struct ContentView: View {
             Button {
                 clip.stop()
                 job.start(input: audio!.path, outputDir: outputDir, mode: mode, sampleRate: sampleRate,
-                          trim: clip.isTrimmed ? (clip.start, clip.end) : nil)
+                          trim: clip.isTrimmed ? (clip.start, clip.end) : nil, click: click)
             } label: {
                 Label("Generate Stems", systemImage: "sparkles")
                     .font(.title3.weight(.semibold))
@@ -539,6 +541,22 @@ struct ContentView: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .help("Separation always runs at 44.1 kHz; stems are then written at this rate. Match your DAW project.")
+
+        Text("Metronome").font(.caption.weight(.semibold)).foregroundStyle(Theme.pink)
+        HStack(spacing: 10) {
+            Image(systemName: "metronome").font(.title3).foregroundStyle(click ? Theme.pink : .secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Smart click track").font(.callout.weight(.semibold))
+                Text("Finds the beat and the bars from the drums and chords, odd and changing meters too, and accents every 1.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("Smart click track", isOn: $click).toggleStyle(.switch).labelsHidden()
+        }
+        .padding(10)
+        .background(click ? Theme.accent.opacity(0.22) : .white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10)
+            .stroke(click ? Theme.pink.opacity(0.8) : .white.opacity(0.12), lineWidth: click ? 1.5 : 1))
 
         Text("Save stems to").font(.caption.weight(.semibold)).foregroundStyle(Theme.pink)
         HStack {

@@ -8,7 +8,7 @@ Emits line-based protocol on stdout for the Swift UI:
   DONE <output folder>
   ERROR <message>
 """
-import argparse, os, re, shutil, signal, subprocess, sys, tempfile
+import argparse, json, os, re, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
 # everything lives in the folder setup.sh created
@@ -167,6 +167,7 @@ def main():
     ap.add_argument("--download-only", action="store_true", help="save the link's audio, skip separation")
     ap.add_argument("--start", type=float, help="separate only from this second")
     ap.add_argument("--end", type=float, help="separate only up to this second")
+    ap.add_argument("--click", action="store_true", help="also write a click track that follows the beat")
     a = ap.parse_args()
 
     src = a.input.strip().strip("'\"")
@@ -257,6 +258,18 @@ def main():
 
     for i, (name, x) in enumerate(stems.items(), 1):
         write(f"{i:02d} {name}", x)
+    if a.click:
+        progress(0.95, "Finding the beat and bars")
+        import beats
+        harmonic = sum(stems[k] for k in ("Guitar", "Piano", "Other")).mean(axis=1)
+        info = beats.analyze(stems["Drums"].mean(axis=1), harmonic, MODEL_SR)
+        if info:
+            n_out = int(round(n * out_sr / MODEL_SR))
+            write(f"{len(stems) + 1:02d} Click",
+                  beats.click_track(info["beats"], info["downbeats"], n_out, out_sr), sr=out_sr)
+        # read by the Library (BPM and meter); {"bpm": null} when no steady beat was found
+        (out / "analysis.json").write_text(json.dumps(info or {"bpm": None}))
+        progress(0.96, f"Writing files ({out_sr / 1000:g} kHz)")
     write("Backing - No Guitar", sum(v for k, v in stems.items() if k != "Guitar"), -1.0)
     write("Backing - No Vocals", sum(v for k, v in stems.items() if k != "Vocals"), -1.0)
     # original straight from the source at the output rate (no double resampling)

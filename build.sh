@@ -12,7 +12,7 @@ else
 fi
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/StemMission "$APP/Contents/MacOS/"
-cp Resources/worker.py Resources/setup.sh Resources/AppIcon.icns "$APP/Contents/Resources/"
+cp Resources/worker.py Resources/beats.py Resources/setup.sh Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -R Resources/wheels "$APP/Contents/Resources/"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

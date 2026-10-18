@@ -6,11 +6,26 @@ import SwiftUI
 
 /// Finished stem folders found in the output folder, newest first.
 final class StemLibrary: ObservableObject {
+    struct Section: Hashable {
+        let start: Double
+        let beatsPerBar: Int
+        let bars: Int
+    }
+
     struct Item: Identifiable, Hashable {
         let folder: URL
         let date: Date
         let stems: [URL]
+        let bpm: Double?
+        let sections: [Section]
+        /// "4/4" for one meter throughout, "Mixed meter" when it changes; nil when unknown.
+        var meter: String? {
+            let all = Set(sections.map(\.beatsPerBar))
+            guard let only = all.first else { return nil }
+            return all.count == 1 ? "\(only)/4" : "Mixed meter"
+        }
         var id: URL { folder }
+        var click: URL? { stems.first { $0.deletingPathExtension().lastPathComponent.hasSuffix(" Click") } }
         // "Song - Stems (2)" -> "Song (2)"
         var title: String { folder.lastPathComponent.replacingOccurrences(of: " - Stems", with: "") }
     }
@@ -30,7 +45,15 @@ final class StemLibrary: ObservableObject {
                 .sorted { $0.lastPathComponent < $1.lastPathComponent }
             guard !wavs.isEmpty else { return nil }  // unfinished or failed run (only _work inside)
             let date = (try? f.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-            return Item(folder: f, date: date, stems: wavs)
+            // written by the worker's smart metronome; missing for older runs
+            let analysis = (try? Data(contentsOf: f.appendingPathComponent("analysis.json")))
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let sections = (analysis?["sections"] as? [[String: Any]] ?? []).compactMap { d -> Section? in
+                guard let start = d["start"] as? Double, let m = d["beats_per_bar"] as? Int,
+                      let bars = d["bars"] as? Int else { return nil }
+                return Section(start: start, beatsPerBar: m, bars: bars)
+            }
+            return Item(folder: f, date: date, stems: wavs, bpm: analysis?["bpm"] as? Double, sections: sections)
         }
         .sorted { $0.date > $1.date }
     }
@@ -43,13 +66,21 @@ final class StemLibrary: ObservableObject {
 
 // MARK: - Playback and waveforms
 
-/// Plays one stem at a time.
+/// Plays one stem at a time, optionally with the click track in sync.
 final class StemPlayer: ObservableObject {
     @Published private(set) var playing: URL?
     @Published private(set) var position: Double = 0  // 0...1 of the playing file
+    @Published private(set) var click: URL?
 
     private var player: AVAudioPlayer?
+    private var clickPlayer: AVAudioPlayer?
     private var timer: Timer?
+
+    /// Turn the click on (with its file) or off; a playing stem restarts in place with the new setting.
+    func setClick(_ url: URL?) {
+        click = url
+        if let playing { let at = position; stop(keepClick: true); play(playing, from: at) }
+    }
 
     func toggle(_ url: URL) {
         if playing == url { stop() } else { play(url, from: 0) }
@@ -68,15 +99,27 @@ final class StemPlayer: ObservableObject {
             timer = t
         }
         guard let p = player else { return }
-        p.currentTime = fraction * p.duration
+        let at = fraction * p.duration
+        p.currentTime = at
         position = fraction
-        p.play()
+        clickPlayer?.stop(); clickPlayer = nil
+        if let click, click != url, let c = try? AVAudioPlayer(contentsOf: click) {
+            // stems share one length, so the same offset lines the click up with the stem
+            c.currentTime = at
+            let start = p.deviceCurrentTime + 0.05
+            p.play(atTime: start); c.play(atTime: start)
+            clickPlayer = c
+        } else {
+            p.play()
+        }
     }
 
-    func stop() {
+    func stop(keepClick: Bool = true) {
         player?.stop(); player = nil
+        clickPlayer?.stop(); clickPlayer = nil
         timer?.invalidate(); timer = nil
         playing = nil; position = 0
+        if !keepClick { click = nil }
     }
 }
 
@@ -140,7 +183,7 @@ struct LibraryView: View {
         Group {
             if let item = selected, library.items.contains(item) {
                 LibraryDetail(item: item, library: library, player: player, cache: cache) {
-                    player.stop(); selected = nil
+                    player.stop(keepClick: false); selected = nil
                 }
             } else if library.items.isEmpty {
                 emptyState
@@ -150,7 +193,7 @@ struct LibraryView: View {
         }
         .padding(22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .onDisappear { player.stop() }
+        .onDisappear { player.stop(keepClick: false) }
     }
 
     private var list: some View {
@@ -184,7 +227,9 @@ struct LibraryView: View {
             .frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title).font(.callout.weight(.semibold)).lineLimit(2)
-                Text("\(item.date.formatted(.relative(presentation: .named))) · \(item.stems.count) files")
+                Text("\(item.date.formatted(.relative(presentation: .named))) · \(item.stems.count) files"
+                     + (item.bpm.map { " · \(Int($0.rounded())) BPM" } ?? "")
+                     + (item.meter.map { " · \($0)" } ?? ""))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -230,12 +275,28 @@ struct LibraryDetail: View {
             HStack {
                 Text(item.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption).foregroundStyle(.secondary)
+                if let bpm = item.bpm { pill("\(Int(bpm.rounded())) BPM") }
+                if let meter = item.meter { pill(meter) }
                 Spacer()
+                if let clickURL = item.click {
+                    Toggle(isOn: Binding(get: { player.click != nil },
+                                         set: { player.setClick($0 ? clickURL : nil) })) {
+                        Label("Click", systemImage: "metronome")
+                    }
+                    .toggleStyle(.button)
+                    .help("Play the click together with any stem")
+                }
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([item.folder]) }
                 Button(role: .destructive) { confirmTrash = true } label: { Image(systemName: "trash") }
                     .help("Move this folder to the Trash")
             }
             if let trashError { Text(trashError).font(.caption).foregroundStyle(Theme.error) }
+            if Set(item.sections.map(\.beatsPerBar)).count > 1 {
+                // where the meter changes, e.g. "0:01 4/4 ×3 → 0:06 7/4 ×2"
+                Text(item.sections.map { "\(clock($0.start)) \($0.beatsPerBar)/4 ×\($0.bars)" }.joined(separator: "  →  "))
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text("Click a waveform to play from there. Drag a row into your DAW.")
                 .font(.caption).foregroundStyle(.secondary)
             ScrollView {
@@ -251,6 +312,15 @@ struct LibraryDetail: View {
             }
         }
     }
+
+    private func pill(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.bold)).monospacedDigit()
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(Theme.accent, in: Capsule())
+    }
+
+    private func clock(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
     private func stemRow(_ url: URL) -> some View {
         let isPlaying = player.playing == url
